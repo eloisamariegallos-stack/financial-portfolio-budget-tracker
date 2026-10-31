@@ -1,62 +1,41 @@
-import React, { useState, useEffect } from 'react';
-import Dashboard from './Dashboard';
-import LoginPage from './LoginPage';
+import React from 'react'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { FinanceProvider } from './context/FinanceContext'
+import Layout from './components/Layout'
+import Dashboard from './pages/Dashboard'
+import Transactions from './pages/Transactions'
+import Accounts from './pages/Accounts'
+import Budgets from './pages/Budgets'
+import Goals from './pages/Goals'
+import Investments from './pages/Investments'
+import Analytics from './pages/Analytics'
+import Assistant from './pages/Assistant'
+import Notifications from './pages/Notifications'
+import Settings from './pages/Settings'
+import { Login, Signup, ForgotPassword } from './pages/Auth'
+const SESSION_KEY = 'fpt_session_v1'
+function hasSession() {
+  try {
+    const session = JSON.parse(
+      localStorage.getItem(SESSION_KEY) || 'null'
+    )
 
-function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [backendStatus, setBackendStatus] = useState("checking...");
+    if (!session?.email || !session?.access_token) {
+      return false
+    }
 
-  useEffect(() => {
-    fetch("http://localhost:5000/api/health")
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Backend response failed");
-        }
-        return response.json();
-      })
-      .then(data => {
-      console.log('Backend response:', data);
-          setBackendStatus(data.status || 'Connected');
-      })
-      .catch((error) => {
-        console.error('Backend connection error:', error);
-        setBackendStatus('Disconnected');
-      });
-  }, []);
+    const expiresAt = Number(session.expires_at || 0)
+    const now = Math.floor(Date.now() / 1000)
 
-// temporary demo login, not secure for real accounts.
-const handleLogin = (gmail, password) => {
-  if (
-gmail === "admin@gmail.com" && password === "password123"
-  ) {
-    setIsAuthenticated(true);
-    return true;
+    if (expiresAt && expiresAt <= now + 30) {
+      return false
+    }
+
+    return true
+  } catch {
+    return false
   }
-  return false;
-};
-
-return isAuthenticated ? (
-  <>
-    <div
-     style={{
-  padding: '10px 14px',
-  fontSize: '14px',
-  fontWeight: 'bold',
-  color: '#111111',
-  backgroundColor: '#ffffff',
-  position: 'relative',
-  zIndex: 99999,
-}}
-    >
-      Backend status: {backendStatus}
-    </div>
-
-    <Dashboard onLogout={() => setIsAuthenticated(false)} />
-  </>
-) : (
-  <LoginPage onLogin={handleLogin} />
-);
 }
-
-
-export default App;
+function ProtectedLayout(){const location=useLocation();return hasSession()?<Layout/>:<Navigate to="/login" replace state={{from:location.pathname}}/>}
+function GuestOnly({children}){return hasSession()?<Navigate to="/" replace/>:children}
+export default function App(){return <FinanceProvider><Routes><Route path="/login" element={<GuestOnly><Login/></GuestOnly>}/><Route path="/signup" element={<GuestOnly><Signup/></GuestOnly>}/><Route path="/forgot-password" element={<GuestOnly><ForgotPassword/></GuestOnly>}/><Route element={<ProtectedLayout/>}><Route path="/" element={<Dashboard/>}/><Route path="/accounts" element={<Accounts/>}/><Route path="/transactions" element={<Transactions/>}/><Route path="/budgets" element={<Budgets/>}/><Route path="/goals" element={<Goals/>}/><Route path="/investments" element={<Investments/>}/><Route path="/analytics" element={<Analytics/>}/><Route path="/assistant" element={<Assistant/>}/><Route path="/notifications" element={<Notifications/>}/><Route path="/settings" element={<Settings/>}/></Route><Route path="*" element={<Navigate to={hasSession()?'/':'/login'} replace/>}/></Routes></FinanceProvider>}
