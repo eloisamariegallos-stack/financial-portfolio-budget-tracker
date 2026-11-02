@@ -1,29 +1,20 @@
-# Financial Portfolio and Budget Tracker
+# FinanceTracker
 
-A React + Tailwind CSS personal finance frontend. The workspace starts empty; records are created only when you add them.
+React + Tailwind CSS frontend for the FinanceTracker Express/Supabase backend.
 
 ## Run locally
 
 1. Install Node.js (LTS).
-2. Open this folder in a terminal.
-3. Run `npm install`.
-4. Run `npm run dev`.
-5. Open the local URL printed by Vite.
+2. Copy `../backend/.env.example` to `../backend/.env` and configure the Supabase URL and publishable key from your Supabase project. Never put a Supabase service-role key in the frontend.
+3. Copy `.env.example` to `.env` if the backend uses a different address than `http://localhost:5000`; set `VITE_API_BASE_URL` to the backend origin (without an `/api` suffix).
+4. Start the backend from `../backend` with `npm start`.
+5. Run `npm install` and `npm run dev` from this folder.
+6. Create an account and sign in. Then add income or expense transactions and portfolio investments. These are fetched from the authenticated backend when the app loads and are saved in Supabase.
 
-## Account access
+The backend permits the Vite origins `http://localhost:5173` and `http://127.0.0.1:5173` by default. Set `FRONTEND_ORIGINS` in the backend `.env` to a comma-separated list when using different frontend origins.
 
-- Create an account with a name, email, and password.
-- Sign in with the same email and password.
-- Duplicate email addresses are rejected.
-- Passwords are stored as salted PBKDF2 hashes in this browser's local storage.
-- Financial records are saved separately for each locally registered account in this browser.
-- Signing out returns to the login page; app pages require a local session.
-- Password recovery is intentionally unavailable until a backend or trusted provider can verify account ownership. The frontend no longer lets someone reset a password using only a known email address.
+Finance API calls use the access token returned by the backend login flow. API failures are shown in the app, and failed form submissions remain open so they can be corrected or retried.
 
-## Important limitations
+The backend schema stores income/expense source or category, amount, description, and date. Portfolio records store asset name/type, quantity, and per-unit purchase price. Extra frontend-only fields (such as payment method, account association, notes, ticker symbol, and manually entered current portfolio value) are cached in this browser and survive a page refresh, but are not synced across devices.
 
-This is a frontend-only build. There is no backend or remote database, so accounts only exist in the browser where they were created and do not sync across devices or browsers. Browser storage can be cleared or modified, and frontend route guards can be bypassed by a technically capable user. The PBKDF2 hash is only a local demo safeguard; it is not equivalent to server-side password hashing or secure authentication. Email verification, real email password-reset links, server-side access control, and secure multi-user data storage require a backend/auth provider. The finance assistant uses local calculations, not an external AI service. Investment prices are entered manually and are not live market prices.
-
-## Production security required
-
-Before using real financial or personal information, connect a backend or trusted authentication provider. Enforce authentication and authorization on every private API endpoint, hash passwords server-side (for example with Argon2id or bcrypt), use secure HttpOnly/Secure/SameSite cookies or provider-managed sessions, implement verified email recovery, and store user data in a server-side database. Do not treat this local-only project as production-secure.
+The assistant uses local calculations, and investment prices are not live market prices.

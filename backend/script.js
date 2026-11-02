@@ -8,7 +8,31 @@ const { createClient } = require("@supabase/supabase-js");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+const allowedOrigins = (process.env.FRONTEND_ORIGINS ||
+  "http://localhost:5173,http://127.0.0.1:5173")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use((req, res, next) => {
+  const origin = req.get("Origin");
+  if (origin && !allowedOrigins.includes(origin)) {
+    return res.status(403).json({
+      success: false,
+      message: "This frontend origin is not allowed by CORS.",
+    });
+  }
+  next();
+});
+
+app.use(cors({
+  origin(origin, callback) {
+    callback(null, !origin || allowedOrigins.includes(origin));
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204,
+}));
 app.use(express.json());
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -24,7 +48,7 @@ app.get("/", (req, res) => {
 });
 
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
+  res.json({ status: "ok", supabaseConfigured: Boolean(supabase) });
 });
 
 app.get("/api/test", (req, res) => {
@@ -271,6 +295,57 @@ app.post("/api/income", async (req, res) => {
   return res.status(201).json({ success: true, income: data });
 });
 
+app.put("/api/income/:id", async (req, res) => {
+  const { source, amount, description, income_date } = req.body;
+
+  if (!source || amount === undefined ||
+      !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: "A source and a positive numeric amount are required.",
+    });
+  }
+
+  const { data, error } = await req.db
+    .from("income")
+    .update({
+      source,
+      amount: Number(amount),
+      description: description || null,
+      ...(income_date ? { income_date } : {}),
+    })
+    .eq("id", req.params.id)
+    .eq("user_id", req.user.id)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+  if (!data) {
+    return res.status(404).json({ success: false, message: "Income record not found." });
+  }
+  return res.json({ success: true, income: data });
+});
+
+app.delete("/api/income/:id", async (req, res) => {
+  const { data, error } = await req.db
+    .from("income")
+    .delete()
+    .eq("id", req.params.id)
+    .eq("user_id", req.user.id)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+  if (!data) {
+    return res.status(404).json({ success: false, message: "Income record not found." });
+  }
+  return res.json({ success: true, income: data });
+});
+
 // Expense records
 app.get("/api/expenses", async (req, res) => {
   const { data, error } = await req.db
@@ -320,6 +395,57 @@ app.post("/api/expenses", async (req, res) => {
   }
 
   return res.status(201).json({ success: true, expense: data });
+});
+
+app.put("/api/expenses/:id", async (req, res) => {
+  const { category, amount, description, expense_date } = req.body;
+
+  if (!category || amount === undefined ||
+      !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: "A category and a positive numeric amount are required.",
+    });
+  }
+
+  const { data, error } = await req.db
+    .from("expenses")
+    .update({
+      category,
+      amount: Number(amount),
+      description: description || null,
+      ...(expense_date ? { expense_date } : {}),
+    })
+    .eq("id", req.params.id)
+    .eq("user_id", req.user.id)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+  if (!data) {
+    return res.status(404).json({ success: false, message: "Expense record not found." });
+  }
+  return res.json({ success: true, expense: data });
+});
+
+app.delete("/api/expenses/:id", async (req, res) => {
+  const { data, error } = await req.db
+    .from("expenses")
+    .delete()
+    .eq("id", req.params.id)
+    .eq("user_id", req.user.id)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+  if (!data) {
+    return res.status(404).json({ success: false, message: "Expense record not found." });
+  }
+  return res.json({ success: true, expense: data });
 });
 
 app.get("/api/portfolio", async (req, res) => {
@@ -376,8 +502,88 @@ app.post("/api/portfolio", async (req, res) => {
   return res.status(201).json({ success: true, portfolio: data });
 });
 
+app.put("/api/portfolio/:id", async (req, res) => {
+  const { asset_name, asset_type, quantity, purchase_price } = req.body;
+
+  if (!asset_name || !asset_type ||
+      quantity === undefined || purchase_price === undefined ||
+      !Number.isFinite(Number(quantity)) || Number(quantity) <= 0 ||
+      !Number.isFinite(Number(purchase_price)) || Number(purchase_price) < 0) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "Asset name, asset type, positive quantity, and a non-negative purchase price are required.",
+    });
+  }
+
+  const { data, error } = await req.db
+    .from("portfolio")
+    .update({
+      asset_name,
+      asset_type,
+      quantity: Number(quantity),
+      purchase_price: Number(purchase_price),
+    })
+    .eq("id", req.params.id)
+    .eq("user_id", req.user.id)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+  if (!data) {
+    return res.status(404).json({ success: false, message: "Portfolio record not found." });
+  }
+  return res.json({ success: true, portfolio: data });
+});
+
+app.delete("/api/portfolio/:id", async (req, res) => {
+  const { data, error } = await req.db
+    .from("portfolio")
+    .delete()
+    .eq("id", req.params.id)
+    .eq("user_id", req.user.id)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+  if (!data) {
+    return res.status(404).json({ success: false, message: "Portfolio record not found." });
+  }
+  return res.json({ success: true, portfolio: data });
+});
+
 app.get("/api/transactions", (req, res) => {
   res.json({ success: true, transactions: [] });
+});
+
+app.use("/api", (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "API endpoint not found.",
+  });
+});
+
+app.use((error, req, res, next) => {
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  if (error.type === "entity.parse.failed") {
+    return res.status(400).json({
+      success: false,
+      message: "Request body must contain valid JSON.",
+    });
+  }
+
+  console.error("Unhandled request error:", error);
+  return res.status(500).json({
+    success: false,
+    message: "An unexpected server error occurred.",
+  });
 });
 
 app.listen(PORT, () => {
