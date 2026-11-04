@@ -1,8 +1,32 @@
-﻿node_modules/
+﻿# Dependencies and build files
+node_modules/
 **/node_modules/
 dist/
 **/dist/
+
+# Environment variables
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
+!**/.env.example
+
+# Private key files
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+
+# Credential and token files
+*secret*
+*credentials*
+*access_token*
+*refresh_token*
+*password*
+
+# Log files
 *.log
+# Local backup files
+*.backup.js
