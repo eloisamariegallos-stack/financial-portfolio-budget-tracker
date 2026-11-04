@@ -7,5 +7,11 @@ export const seedData = {
   investments: [],
   notifications: [],
   profile: { name: 'User', email: '' },
-  settings: { currency: 'PHP', theme: 'light', warningThreshold: 80 }
+  settings: {
+    country: 'Philippines',
+    currency: 'PHP',
+    language: 'English (PH)',
+    theme: 'light',
+    warningThreshold: 80
+  }
 }

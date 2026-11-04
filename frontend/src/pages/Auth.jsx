@@ -1,36 +1,44 @@
 
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Activity, Eye, EyeOff, Moon, Sun } from 'lucide-react'
-import { useFinance } from '../context/FinanceContext'
+import { Activity, Eye, EyeOff } from 'lucide-react'
+import { seedData } from '../data/seed'
+import { postApi } from '../utils/api'
 
 const SESSION_KEY = 'fpt_session_v1'
-const API_BASE_URL = 'http://localhost:5000'
+const REMEMBER_EMAIL_KEY = 'fpt_remembered_email_v1'
+const dataKey = email => `fpt_finance_data_v1:${String(email || 'guest').toLowerCase()}`
 
 const normalizeEmail = email => email.trim().toLowerCase()
 
 const validEmail = email =>
   /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)
 
-async function postApi(endpoint, payload) {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  })
+function syncUserPreferences(userEmail, preferences = {}) {
+  if (!userEmail) return
 
-  const result = await response.json().catch(() => ({}))
+  try {
+    const existing = JSON.parse(localStorage.getItem(dataKey(userEmail)) || 'null')
+    const nextData = {
+      ...seedData,
+      ...(existing || {}),
+      profile: {
+        ...(existing?.profile || seedData.profile),
+        name: preferences.name || existing?.profile?.name || userEmail.split('@')[0],
+        email: userEmail
+      },
+      settings: {
+        ...seedData.settings,
+        ...(existing?.settings || {}),
+        ...preferences
+      }
+    }
 
-  if (!response.ok || !result.success) {
-    throw new Error(result.message || 'Request failed.')
-  }
-
-  return result
+    localStorage.setItem(dataKey(userEmail), JSON.stringify(nextData))
+  } catch {}
 }
 
-function startSession(user, authSession) {
+function startSession(user, authSession, preferences = {}) {
   if (!authSession?.access_token) {
     throw new Error('No authentication token was returned.')
   }
@@ -49,50 +57,28 @@ function startSession(user, authSession) {
     signedInAt: Date.now()
   }
 
+  syncUserPreferences(user.email, preferences)
   localStorage.setItem(SESSION_KEY, JSON.stringify(session))
   window.dispatchEvent(new Event('fpt-session-change'))
 }
 
 function AuthShell({ title, subtitle, children }) {
-  const { data, update } = useFinance()
-  const isDark = data?.settings?.theme === 'dark'
-
-  const toggleTheme = () =>
-    update('settings', prev => ({
-      ...prev,
-      theme: isDark ? 'light' : 'dark'
-    }))
-
   return (
-    <div className="flex min-h-screen items-center justify-center auth-shell bg-gradient-to-br from-emerald-50 via-white to-teal-100 p-4">
-      <div className="mx-auto w-full max-w-md">
-        <div className="mb-4 flex justify-end">
-          <button
-            type="button"
-            className="theme-toggle rounded-xl p-2.5"
-            onClick={toggleTheme}
-            aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
-          >
-            {isDark ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-        </div>
-
-        <div className="mb-7 flex items-center justify-center gap-3">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-700 text-white">
+    <div className="auth-shell flex min-h-screen items-center justify-center p-4">
+      <div className="auth-content mx-auto w-full max-w-md">
+        <div className="auth-brand mb-6 flex items-center justify-center gap-3">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl">
             <Activity size={25} />
           </span>
-
-          <span className="min-w-0 text-center font-display text-lg font-extrabold leading-tight sm:text-xl">
-            Financial Portfolio and Budget Tracker
-          </span>
+          <span className="font-display text-xl font-extrabold leading-tight">FinanceTracker</span>
         </div>
 
         <section className="card auth-card p-6 sm:p-9">
-          <h1 className="text-center font-display text-2xl font-extrabold">
+          <h1 className="auth-heading text-center font-display text-2xl font-extrabold">
             {title}
           </h1>
 
-          <p className="mt-2 text-center text-sm text-slate-500">
+          <p className="auth-description mt-2 text-center text-sm">
             {subtitle}
           </p>
 
@@ -105,13 +91,31 @@ function AuthShell({ title, subtitle, children }) {
 
 // LOGIN
 export function Login() {
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() => localStorage.getItem(REMEMBER_EMAIL_KEY) || '')
+  const [rememberMe, setRememberMe] = useState(() => Boolean(localStorage.getItem(REMEMBER_EMAIL_KEY)))
   const [password, setPassword] = useState('')
   const [show, setShow] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
   const nav = useNavigate()
+
+  const updateEmail = value => {
+    setEmail(value)
+    if (rememberMe) {
+      if (value) localStorage.setItem(REMEMBER_EMAIL_KEY, value)
+      else localStorage.removeItem(REMEMBER_EMAIL_KEY)
+    }
+  }
+
+  const updateRememberMe = checked => {
+    setRememberMe(checked)
+    if (checked && email) {
+      localStorage.setItem(REMEMBER_EMAIL_KEY, email)
+    } else if (!checked) {
+      localStorage.removeItem(REMEMBER_EMAIL_KEY)
+    }
+  }
 
   const submit = async e => {
     e.preventDefault()
@@ -154,30 +158,30 @@ export function Login() {
 
   return (
     <AuthShell
-      title="Welcome back"
+      title="Welcome back to FinanceTracker"
       subtitle="Manage your finances in one place"
     >
       <form className="mt-7 space-y-4" onSubmit={submit}>
-        <label className="block text-sm font-medium text-slate-600">
+        <label className="auth-label block text-sm font-medium">
           Email address
           <span className="relative mt-1.5 block">
             <input
               autoComplete="email"
-              className="field"
+              className="field auth-input"
               type="email"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={e => updateEmail(e.target.value)}
               required
             />
           </span>
         </label>
 
-        <label className="block text-sm font-medium text-slate-600">
+        <label className="auth-label block text-sm font-medium">
           Password
           <span className="relative mt-1.5 block">
             <input
               autoComplete="current-password"
-              className="field pr-10"
+              className="field auth-input pr-10"
               type={show ? 'text' : 'password'}
               value={password}
               onChange={e => setPassword(e.target.value)}
@@ -186,7 +190,7 @@ export function Login() {
 
             <button
               type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+              className="auth-password-toggle absolute right-3 top-1/2 -translate-y-1/2"
               onClick={() => setShow(!show)}
               aria-label="Toggle password visibility"
             >
@@ -195,9 +199,18 @@ export function Login() {
           </span>
         </label>
 
-        <div className="flex justify-end">
+        <div className="auth-login-options flex flex-wrap items-center justify-between gap-3">
+          <label className="auth-remember flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="auth-checkbox"
+              checked={rememberMe}
+              onChange={e => updateRememberMe(e.target.checked)}
+            />
+            Remember me
+          </label>
           <Link
-            className="text-sm font-semibold text-emerald-700"
+            className="auth-link text-sm font-semibold"
             to="/forgot-password"
           >
             Forgot password?
@@ -205,23 +218,23 @@ export function Login() {
         </div>
 
         {error && (
-          <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
+          <p role="alert" className="auth-error rounded-lg p-3 text-sm">
             {error}
           </p>
         )}
 
         <button
           disabled={busy}
-          className="btn-primary flex w-full items-center justify-center gap-2 py-3 disabled:cursor-wait disabled:opacity-60"
+          className="btn-primary auth-submit flex w-full items-center justify-center gap-2 py-3 disabled:cursor-wait disabled:opacity-60"
         >
           {busy && <span className="spinner" aria-hidden="true" />}
           {busy ? 'Signing in...' : 'Sign in'}
         </button>
       </form>
 
-      <p className="mt-5 text-center text-sm text-slate-500">
-        New to Financial Portfolio?{' '}
-        <Link to="/signup" className="font-bold text-emerald-700">
+      <p className="auth-footer mt-5 text-center text-sm">
+        New to FinanceTracker?{' '}
+        <Link to="/signup" className="auth-link font-bold">
           Create an account
         </Link>
       </p>
@@ -236,6 +249,7 @@ export function Signup() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [show, setShow] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
@@ -310,9 +324,9 @@ try {
 
   nav('/', { replace: true })
 
-} catch {
+} catch (error) {
   setNotice(
-    'Account created successfully, but automatic login failed. Please sign in.'
+    `Account created, but automatic sign-in failed: ${error.message || 'Please sign in manually.'}`
   )
 }
     } catch (error) {
@@ -328,12 +342,12 @@ try {
       subtitle="Create an account to get started"
     >
       <form className="mt-7 space-y-4" onSubmit={submit}>
-        <label className="block text-sm font-medium text-slate-600">
+        <label className="auth-label block text-sm font-medium">
           Full name
           <span className="relative mt-1.5 block">
             <input
               autoComplete="name"
-              className="field"
+              className="field auth-input"
               value={name}
               onChange={e => setName(e.target.value)}
               required
@@ -341,12 +355,12 @@ try {
           </span>
         </label>
 
-        <label className="block text-sm font-medium text-slate-600">
+        <label className="auth-label block text-sm font-medium">
           Email address
           <span className="relative mt-1.5 block">
             <input
               autoComplete="email"
-              className="field"
+              className="field auth-input"
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
@@ -355,12 +369,12 @@ try {
           </span>
         </label>
 
-        <label className="block text-sm font-medium text-slate-600">
+        <label className="auth-label block text-sm font-medium">
           Password
           <span className="relative mt-1.5 block">
             <input
               autoComplete="new-password"
-              className="field pr-10"
+              className="field auth-input pr-10"
               type={show ? 'text' : 'password'}
               value={password}
               onChange={e => setPassword(e.target.value)}
@@ -370,7 +384,7 @@ try {
 
             <button
               type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+              className="auth-password-toggle auth-signup-password-toggle absolute right-3 top-1/2 -translate-y-1/2"
               onClick={() => setShow(!show)}
               aria-label="Toggle password visibility"
             >
@@ -378,47 +392,57 @@ try {
             </button>
           </span>
 
-          <span className="mt-1 block text-xs text-slate-400">
+          <span className="auth-hint mt-1 block text-xs">
             Use at least 8 characters.
           </span>
         </label>
 
-        <label className="block text-sm font-medium text-slate-600">
+        <label className="auth-label block text-sm font-medium">
           Confirm password
-          <input
-            autoComplete="new-password"
-            className="field mt-1.5"
-            type="password"
-            value={confirm}
-            onChange={e => setConfirm(e.target.value)}
-            required
-          />
+          <span className="relative mt-1.5 block">
+            <input
+              autoComplete="new-password"
+              className="field auth-input pr-10"
+              type={showConfirm ? 'text' : 'password'}
+              value={confirm}
+              onChange={e => setConfirm(e.target.value)}
+              required
+            />
+            <button
+              type="button"
+              className="auth-password-toggle auth-signup-password-toggle absolute right-3 top-1/2 -translate-y-1/2"
+              onClick={() => setShowConfirm(!showConfirm)}
+              aria-label="Toggle confirm password visibility"
+            >
+              {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </span>
         </label>
 
         {error && (
-          <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
+          <p role="alert" className="auth-error rounded-lg p-3 text-sm">
             {error}
           </p>
         )}
 
         {notice && (
-          <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
+          <p role="status" className="auth-notice rounded-lg p-3 text-sm">
             {notice}
           </p>
         )}
 
         <button
           disabled={busy}
-          className="btn-primary flex w-full items-center justify-center gap-2 py-3 disabled:cursor-wait disabled:opacity-60"
+          className="btn-primary auth-submit flex w-full items-center justify-center gap-2 py-3 disabled:cursor-wait disabled:opacity-60"
         >
           {busy && <span className="spinner" aria-hidden="true" />}
           {busy ? 'Creating account...' : 'Create account'}
         </button>
       </form>
 
-      <p className="mt-5 text-center text-sm text-slate-500">
+      <p className="auth-footer mt-5 text-center text-sm">
         Already have an account?{' '}
-        <Link to="/login" className="font-bold text-emerald-700">
+        <Link to="/login" className="auth-link font-bold">
           Sign in
         </Link>
       </p>
@@ -433,7 +457,7 @@ export function ForgotPassword() {
       title="Password recovery unavailable"
       subtitle="Your account security matters"
     >
-      <div className="mt-6 space-y-4 text-sm leading-6 text-slate-600">
+      <div className="auth-footer mt-6 space-y-4 text-sm leading-6">
         <p>
           This project currently has no verified email-recovery service.
         </p>
