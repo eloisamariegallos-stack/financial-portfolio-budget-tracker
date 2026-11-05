@@ -1,6 +1,6 @@
-# FinanceTracker
+# PennyWise
 
-React + Tailwind CSS frontend for the FinanceTracker Express/Supabase backend.
+React + Tailwind CSS frontend for the PennyWise Express/Supabase backend.
 
 ## Run locally
 

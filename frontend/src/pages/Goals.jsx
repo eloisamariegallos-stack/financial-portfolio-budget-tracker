@@ -1,9 +1,168 @@
-import React,{useState} from 'react'
+import React, { useState } from 'react'
 import { Plus, Pencil, Trash2, Target, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react'
 import { useFinance } from '../context/FinanceContext'
-import { money,uid } from '../utils/finance'
+import { money } from '../utils/finance'
 import Modal from '../components/Modal'
 import RecordForm from '../components/RecordForm'
 import EmptyState from '../components/EmptyState'
-const fields=[{name:'name',label:'Goal name',required:true},{name:'target',label:'Target amount (₱)',type:'number',required:true},{name:'saved',label:'Current savings (₱)',type:'number',required:true},{name:'targetDate',label:'Target date',type:'date',required:true}]
-export default function Goals(){const {data,add,replace,remove}=useFinance(),[modal,setModal]=useState(false),[edit,setEdit]=useState(null),[contribute,setContribute]=useState(null),[amount,setAmount]=useState(''),[history,setHistory]=useState(null);const save=g=>{const item={...g,target:Number(g.target),saved:Number(g.saved),history:g.history||edit?.history||[]};edit?replace('goals',item):add('goals',item);setModal(false);setEdit(null)};const contribution=(direction)=>{const n=Number(amount);if(!(n>0)){alert('Enter an amount greater than zero.');return}if(direction==='withdraw'&&n>contribute.saved){alert('Withdrawal cannot exceed the saved amount.');return}const next={...contribute,saved:contribute.saved+(direction==='add'?n:-n),history:[...(contribute.history||[]),{id:uid(),date:new Date().toISOString().slice(0,10),type:direction,amount:n}]};replace('goals',next);setContribute(null);setAmount('')};return <div className="space-y-6"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-sm font-semibold text-emerald-700">Small steps, big milestones</p><h1 className="mt-1 font-display text-3xl font-extrabold">Savings Goals</h1><p className="mt-2 text-sm text-slate-500">Build savings with clear targets and contribution history.</p></div><button className="btn-primary" onClick={()=>{setEdit(null);setModal(true)}}><Plus size={16} className="mr-1 inline"/> Create goal</button></div><div className="grid gap-4 lg:grid-cols-2">{data.goals.map(g=>{const pct=Math.min(100,g.saved/g.target*100);return <div className="card p-5" key={g.id}><div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="rounded-xl bg-violet-50 p-3 text-violet-700"><Target size={21}/></span><div><h2 className="font-bold">{g.name}</h2><p className="mt-1 text-xs text-slate-500">Target date · {g.targetDate}</p></div></div><div className="flex gap-1"><button className="rounded-lg p-2 hover:bg-slate-100" onClick={()=>{setEdit(g);setModal(true)}}><Pencil size={15}/></button><button className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={()=>confirm(`Delete ${g.name}?`)&&remove('goals',g.id)}><Trash2 size={15}/></button></div></div><div className="mt-6 flex items-end justify-between"><div><p className="text-xs text-slate-500">Saved</p><p className="mt-1 text-2xl font-extrabold">{money(g.saved,data.settings.currency)}</p></div><p className="text-sm text-slate-500">of {money(g.target,data.settings.currency)}</p></div><div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-500" style={{width:`${pct}%`}}/></div><div className="mt-2 flex justify-between text-xs text-slate-500"><span>{pct.toFixed(0)}% complete</span><span>{money(Math.max(0,g.target-g.saved),data.settings.currency)} to go</span></div><div className="mt-5 grid grid-cols-2 gap-2"><button className="btn-primary" onClick={()=>{setContribute(g);setAmount('')}}><ArrowDownToLine size={15} className="mr-1 inline"/> Add contribution</button><button className="btn-secondary" onClick={()=>{setContribute(g);setAmount('')}}><ArrowUpFromLine size={15} className="mr-1 inline"/> Withdraw</button></div><button className="mt-3 w-full rounded-lg py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50" onClick={()=>setHistory(g)}>View contribution history ({(g.history||[]).length})</button></div>})}</div>{!data.goals.length&&<div className="card"><EmptyState title="No savings goals yet" detail="Create a goal to start tracking your progress."/></div>}{modal&&<Modal title={edit?'Edit savings goal':'Create savings goal'} onClose={()=>setModal(false)}><RecordForm fields={fields} initial={edit||{target:10000,saved:0,targetDate:'2027-12-31'}} onSave={save} onCancel={()=>setModal(false)}/></Modal>}{contribute&&<Modal title="Update savings" onClose={()=>setContribute(null)}><p className="mb-4 text-sm text-slate-500">{contribute.name} · Current savings {money(contribute.saved,data.settings.currency)}</p><label className="block text-sm font-medium text-slate-600">Amount ({data.settings.currency})<input className="field mt-1.5" type="number" min="0.01" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0.00"/></label><div className="mt-5 flex gap-2"><button className="btn-secondary flex-1" onClick={()=>contribution('withdraw')}>Withdraw</button><button className="btn-primary flex-1" onClick={()=>contribution('add')}>Add contribution</button></div><p className="mt-3 text-xs text-slate-400">Contributions are tracked separately and do not count as ordinary expenses.</p></Modal>}{history&&<Modal title={`${history.name} · History`} onClose={()=>setHistory(null)}>{history.history?.length?history.history.slice().reverse().map(h=><div key={h.id} className="flex justify-between border-b border-slate-100 py-3 text-sm"><span>{h.date}<span className="ml-2 capitalize text-slate-500">{h.type}</span></span><b className={h.type==='add'?'text-emerald-700':'text-rose-600'}>{h.type==='add'?'+':'−'}{money(h.amount,data.settings.currency)}</b></div>):<EmptyState title="No contributions yet"/>}</Modal>}</div>}
+
+const fields = [
+  { name: 'name', label: 'Goal name', required: true },
+  { name: 'target', label: 'Target amount (₱)', type: 'number', required: true },
+  { name: 'saved', label: 'Current savings (₱)', type: 'number', defaultValue: 0 },
+  { name: 'targetDate', label: 'Target date', type: 'date', required: true }
+]
+
+export default function Goals() {
+  const { data, add, replace, remove, contribute } = useFinance()
+  const [modal, setModal] = useState(false)
+  const [edit, setEdit] = useState(null)
+  const [contributeGoal, setContributeGoal] = useState(null)
+  const [amount, setAmount] = useState('')
+  const [history, setHistory] = useState(null)
+
+  const save = async goal => {
+    const item = {
+      ...goal,
+      target: Number(goal.target),
+      saved: Number(goal.saved)
+    }
+
+    if (edit) {
+      await replace('goals', item)
+    } else {
+      await add('goals', item)
+    }
+    setModal(false)
+    setEdit(null)
+  }
+
+  const deleteGoal = async goal => {
+    if (!confirm(`Delete ${goal.name}?`)) return
+
+    try {
+      await remove('goals', goal.id)
+    } catch (error) {
+      alert(error.message || 'Could not delete the goal.')
+    }
+  }
+
+  const contribution = async direction => {
+    const value = Number(amount)
+    if (!(value > 0)) {
+      alert('Enter an amount greater than zero.')
+      return
+    }
+    if (direction === 'withdraw' && value > contributeGoal.saved) {
+      alert('Withdrawal cannot exceed the saved amount.')
+      return
+    }
+
+    try {
+      await contribute(contributeGoal.id, direction, value)
+      setContributeGoal(null)
+      setAmount('')
+    } catch (error) {
+      alert(error.message || 'Could not save the contribution.')
+    }
+  }
+
+  return <div className="space-y-6">
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div>
+        <p className="text-sm font-semibold text-emerald-700">Small steps, big milestones</p>
+        <h1 className="mt-1 font-display text-3xl font-extrabold">Savings Goals</h1>
+        <p className="mt-2 text-sm text-slate-500">Build savings with clear targets and contribution history.</p>
+      </div>
+      <button className="btn-primary" onClick={() => { setEdit(null); setModal(true) }}>
+        <Plus size={16} className="mr-1 inline" /> Create goal
+      </button>
+    </div>
+
+    <div className="grid gap-4 lg:grid-cols-2">
+      {data.goals.map(goal => {
+        const pct = Math.min(100, goal.saved / goal.target * 100)
+        return <div className="card p-5" key={goal.id}>
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <span className="rounded-xl bg-violet-50 p-3 text-violet-700"><Target size={21} /></span>
+              <div>
+                <h2 className="font-bold">{goal.name}</h2>
+                <p className="mt-1 text-xs text-slate-500">Target date · {goal.targetDate}</p>
+              </div>
+            </div>
+            <div className="flex gap-1">
+              <button className="rounded-lg p-2 hover:bg-slate-100" onClick={() => { setEdit(goal); setModal(true) }}>
+                <Pencil size={15} />
+              </button>
+              <button className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" onClick={() => deleteGoal(goal)}>
+                <Trash2 size={15} />
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-6 flex items-end justify-between">
+            <div>
+              <p className="text-xs text-slate-500">Saved</p>
+              <p className="mt-1 text-2xl font-extrabold">{money(goal.saved, data.settings.currency)}</p>
+            </div>
+            <p className="text-sm text-slate-500">of {money(goal.target, data.settings.currency)}</p>
+          </div>
+          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-violet-500" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="mt-2 flex justify-between text-xs text-slate-500">
+            <span>{pct.toFixed(0)}% complete</span>
+            <span>{money(Math.max(0, goal.target - goal.saved), data.settings.currency)} to go</span>
+          </div>
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <button className="btn-primary" onClick={() => { setContributeGoal(goal); setAmount('') }}>
+              <ArrowDownToLine size={15} className="mr-1 inline" /> Add contribution
+            </button>
+            <button className="btn-secondary" onClick={() => { setContributeGoal(goal); setAmount('') }}>
+              <ArrowUpFromLine size={15} className="mr-1 inline" /> Withdraw
+            </button>
+          </div>
+          <button className="mt-3 w-full rounded-lg py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50" onClick={() => setHistory(goal)}>
+            View contribution history ({(goal.history || []).length})
+          </button>
+        </div>
+      })}
+    </div>
+
+    {!data.goals.length && <div className="card"><EmptyState title="No savings goals yet" detail="Create a goal to start tracking your progress." /></div>}
+
+    {modal && <Modal title={edit ? 'Edit savings goal' : 'Create savings goal'} onClose={() => setModal(false)}>
+      <RecordForm
+        fields={fields}
+        initial={edit || { target: 10000, saved: 0, targetDate: '2027-12-31' }}
+        onSave={save}
+        onCancel={() => setModal(false)}
+      />
+    </Modal>}
+
+    {contributeGoal && <Modal title="Update savings" onClose={() => setContributeGoal(null)}>
+      <p className="mb-4 text-sm text-slate-500">{contributeGoal.name} · Current savings {money(contributeGoal.saved, data.settings.currency)}</p>
+      <label className="block text-sm font-medium text-slate-600">
+        Amount ({data.settings.currency})
+        <input className="field mt-1.5" type="number" min="0.01" step="0.01" value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.00" />
+      </label>
+      <div className="mt-5 flex gap-2">
+        <button className="btn-secondary flex-1" onClick={() => contribution('withdraw')}>Withdraw</button>
+        <button className="btn-primary flex-1" onClick={() => contribution('add')}>Add contribution</button>
+      </div>
+      <p className="mt-3 text-xs text-slate-400">Contributions are tracked separately and do not count as ordinary expenses.</p>
+    </Modal>}
+
+    {history && <Modal title={`${history.name} · History`} onClose={() => setHistory(null)}>
+      {history.history?.length
+        ? history.history.slice().reverse().map(entry => <div key={entry.id} className="flex justify-between border-b border-slate-100 py-3 text-sm">
+            <span>{entry.date}<span className="ml-2 capitalize text-slate-500">{entry.type}</span></span>
+            <b className={entry.type === 'add' ? 'text-emerald-700' : 'text-rose-600'}>
+              {entry.type === 'add' ? '+' : '−'}{money(entry.amount, data.settings.currency)}
+            </b>
+          </div>)
+        : <EmptyState title="No contributions yet" />}
+    </Modal>}
+  </div>
+}

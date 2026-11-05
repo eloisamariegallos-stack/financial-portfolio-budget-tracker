@@ -120,6 +120,20 @@ export const normalizeTransactionDateTime = (dateValue, timeValue) => {
   }
 }
 
+export const toUtcIso = (dateValue, timeValue) => {
+  const parsed = parseLocalDateTime(dateValue, timeValue || toLocalTimeInputValue())
+  return parsed ? parsed.toISOString() : undefined
+}
+
+export const splitLocalDateTime = iso => {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
+  return {
+    date: toLocalDateInputValue(date),
+    time: toLocalTimeInputValue(date)
+  }
+}
+
 export const transactionSortValue = transaction => {
   const rawDate = transaction?.date || ''
   const parsed = parseLocalDateTime(rawDate, transaction?.time)

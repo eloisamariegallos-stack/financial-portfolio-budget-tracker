@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { seedData } from '../data/seed'
-import { resolveThemeMode } from '../utils/finance'
+import { resolveThemeMode, toUtcIso, splitLocalDateTime } from '../utils/finance'
 
 const FinanceContext = createContext(null)
 const SESSION_KEY = 'fpt_session_v1'
@@ -49,8 +49,9 @@ async function requestApi(endpoint, session, { method = 'GET', body } = {}) {
 
 function mapTransaction(row, type, previous, accountId) {
   const saved = previous.find(item => String(item.id) === String(row.id)) || {}
-  const date = type === 'income' ? row.income_date : row.expense_date
-  const time = row.income_time || row.expense_time || row.time || saved.time || ''
+  const local = row.occurred_at ? splitLocalDateTime(row.occurred_at) : null
+  const date = local?.date || (type === 'income' ? row.income_date : row.expense_date)
+  const time = local?.time || row.income_time || row.expense_time || row.time || saved.time || ''
   return {
     ...saved,
     id: row.id,
@@ -59,10 +60,69 @@ function mapTransaction(row, type, previous, accountId) {
     type,
     category: row.category || row.source || saved.category || 'Other',
     date: date || saved.date || '',
-    time,
+    time: typeof time === 'string' ? time.slice(0, 5) : '',
     accountId: saved.accountId || accountId || '',
-    method: saved.method || 'Online banking',
+    method: row.payment_method || saved.method || (type === 'expense' ? 'Cash' : 'Online banking'),
     notes: saved.notes || ''
+  }
+}
+
+function mapGoal(row) {
+  return {
+    id: row.id,
+    name: row.title,
+    target: row.target_amount == null ? 0 : Number(row.target_amount),
+    saved: Number(row.current_amount),
+    targetDate: row.target_date || '',
+    history: (row.contributions || []).map(c => ({
+      id: c.id,
+      date: c.contributed_on,
+      type: c.direction,
+      amount: Number(c.amount)
+    }))
+  }
+}
+
+function goalPayload(item) {
+  return {
+    title: item.name,
+    target_amount: Number(item.target),
+    current_amount: Number(item.saved),
+    target_date: item.targetDate || null
+  }
+}
+
+function mapBudget(row) {
+  return {
+    id: row.id,
+    category: row.category_name,
+    limit: Number(row.monthly_limit),
+    month: String(row.month).slice(0, 7)
+  }
+}
+
+function budgetPayload(item) {
+  return {
+    category_name: item.category,
+    monthly_limit: Number(item.limit),
+    month: item.month
+  }
+}
+
+const notificationTitles = {
+  budget_exceeded: 'Over budget',
+  budget_warning: 'Budget warning',
+  reminder: 'Personal reminder'
+}
+
+function mapNotification(row) {
+  return {
+    id: row.id,
+    type: row.type,
+    title: notificationTitles[row.type] || 'Notification',
+    message: row.message,
+    date: row.created_at,
+    read: Boolean(row.is_read)
   }
 }
 
@@ -87,19 +147,22 @@ function transactionEndpoint(item) {
 }
 
 function transactionPayload(item) {
-  const common = { amount: Number(item.amount), description: item.description || null }
+  const common = {
+    amount: Number(item.amount),
+    description: item.description || null,
+    occurred_at: toUtcIso(item.date, item.time)
+  }
   return item.type === 'income'
     ? {
         ...common,
         source: item.category,
-        income_date: item.date || undefined,
-        income_time: item.time || undefined
+        income_date: item.date || undefined
       }
     : {
         ...common,
         category: item.category,
         expense_date: item.date || undefined,
-        expense_time: item.time || undefined
+        method: item.method || 'Cash'
       }
 }
 
@@ -149,6 +212,18 @@ export function FinanceProvider({ children }) {
     }
   }, [])
 
+  // Reloads only the notifications (budget alerts are created by the database).
+  const refreshNotifications = useCallback(async () => {
+    if (!session?.access_token) return
+    try {
+      const result = await requestApi('/api/notifications', session)
+      if (!Array.isArray(result.notifications)) return
+      setData(previous => ({ ...previous, notifications: result.notifications.map(mapNotification) }))
+    } catch (error) {
+      console.warn('Could not load notifications', error)
+    }
+  }, [session])
+
   const refresh = useCallback(async () => {
     if (!session?.access_token) {
       setSyncStatus('idle')
@@ -159,12 +234,19 @@ export function FinanceProvider({ children }) {
     setSyncStatus('loading')
     setSyncError('')
     try {
-      const [incomeResult, expenseResult, portfolioResult] = await Promise.all([
+      const [incomeResult, expenseResult, portfolioResult, goalsResult, budgetsResult, notificationsResult] = await Promise.all([
         requestApi('/api/income', session),
         requestApi('/api/expenses', session),
-        requestApi('/api/portfolio', session)
+        requestApi('/api/portfolio', session),
+        requestApi('/api/goals', session),
+        requestApi('/api/budgets', session),
+        // A notifications problem should not stop the rest of the app from loading.
+        requestApi('/api/notifications', session).catch(error => {
+          console.warn('Could not load notifications', error)
+          return null
+        })
       ])
-      if (!Array.isArray(incomeResult.income) || !Array.isArray(expenseResult.expenses) || !Array.isArray(portfolioResult.portfolio)) {
+      if (!Array.isArray(incomeResult.income) || !Array.isArray(expenseResult.expenses) || !Array.isArray(portfolioResult.portfolio) || !Array.isArray(goalsResult.goals) || !Array.isArray(budgetsResult.budgets)) {
         throw new Error('The finance API returned an invalid records response.')
       }
 
@@ -174,7 +256,12 @@ export function FinanceProvider({ children }) {
           ...incomeResult.income.map(row => mapTransaction(row, 'income', previous.transactions, previous.accounts[0]?.id)),
           ...expenseResult.expenses.map(row => mapTransaction(row, 'expense', previous.transactions, previous.accounts[0]?.id))
         ],
-        investments: portfolioResult.portfolio.map(row => mapInvestment(row, previous.investments))
+        investments: portfolioResult.portfolio.map(row => mapInvestment(row, previous.investments)),
+        goals: goalsResult.goals.map(mapGoal),
+        budgets: budgetsResult.budgets.map(mapBudget),
+        ...(Array.isArray(notificationsResult?.notifications)
+          ? { notifications: notificationsResult.notifications.map(mapNotification) }
+          : {})
       }))
       setSyncStatus('synced')
     } catch (error) {
@@ -219,6 +306,30 @@ export function FinanceProvider({ children }) {
   }))
 
   const add = async (key, item) => {
+    if (key === 'goals') {
+      if (!session?.access_token) throw new Error('Sign in before saving financial records.')
+      const result = await requestApi('/api/goals', session, { method: 'POST', body: goalPayload(item) })
+      const saved = mapGoal(result.goal)
+      setData(previous => ({ ...previous, goals: [saved, ...previous.goals] }))
+      return saved
+    }
+    if (key === 'budgets') {
+      if (!session?.access_token) throw new Error('Sign in before saving financial records.')
+      const result = await requestApi('/api/budgets', session, { method: 'POST', body: budgetPayload(item) })
+      const saved = mapBudget(result.budget)
+      setData(previous => ({ ...previous, budgets: [saved, ...previous.budgets] }))
+      return saved
+    }
+    if (key === 'notifications') {
+      if (!session?.access_token) {
+        setData(previous => ({ ...previous, notifications: [item, ...previous.notifications] }))
+        return item
+      }
+      const result = await requestApi('/api/notifications', session, { method: 'POST', body: { message: item.message } })
+      const saved = mapNotification(result.notification)
+      setData(previous => ({ ...previous, notifications: [saved, ...previous.notifications] }))
+      return saved
+    }
     if (key === 'transactions' || key === 'investments') {
       if (!session?.access_token) throw new Error('Sign in before saving financial records.')
       const endpoint = key === 'investments' ? '/api/portfolio' : transactionEndpoint(item)
@@ -228,6 +339,8 @@ export function FinanceProvider({ children }) {
         ? mapInvestment(result.portfolio, [item])
         : savedTransaction(result, item)
       setData(previous => ({ ...previous, [key]: [saved, ...previous[key]] }))
+      // A new expense can trigger a budget alert in the database, so reload notifications.
+      if (key === 'transactions' && item.type === 'expense') refreshNotifications()
       return saved
     }
     setData(previous => ({ ...previous, [key]: [item, ...previous[key]] }))
@@ -235,6 +348,20 @@ export function FinanceProvider({ children }) {
   }
 
   const replace = async (key, item) => {
+    if (key === 'goals') {
+      if (!session?.access_token) throw new Error('Sign in before saving financial records.')
+      const result = await requestApi(`/api/goals/${encodeURIComponent(item.id)}`, session, { method: 'PUT', body: goalPayload(item) })
+      const saved = mapGoal(result.goal)
+      setData(previous => ({ ...previous, goals: previous.goals.map(record => String(record.id) === String(saved.id) ? saved : record) }))
+      return saved
+    }
+    if (key === 'budgets') {
+      if (!session?.access_token) throw new Error('Sign in before saving financial records.')
+      const result = await requestApi(`/api/budgets/${encodeURIComponent(item.id)}`, session, { method: 'PUT', body: budgetPayload(item) })
+      const saved = mapBudget(result.budget)
+      setData(previous => ({ ...previous, budgets: previous.budgets.map(record => String(record.id) === String(saved.id) ? saved : record) }))
+      return saved
+    }
     if (key === 'transactions' || key === 'investments') {
       if (!session?.access_token) throw new Error('Sign in before saving financial records.')
       const current = data[key].find(record => String(record.id) === String(item.id))
@@ -253,6 +380,7 @@ export function FinanceProvider({ children }) {
           throw error
         }
         setData(previous => ({ ...previous, transactions: [saved, ...previous.transactions.filter(record => String(record.id) !== String(current.id))] }))
+        if (item.type === 'expense') refreshNotifications()
         return saved
       }
       const endpoint = key === 'investments' ? `/api/portfolio/${encodeURIComponent(item.id)}` : `${transactionEndpoint(item)}/${encodeURIComponent(item.id)}`
@@ -269,6 +397,25 @@ export function FinanceProvider({ children }) {
   }
 
   const remove = async (key, id) => {
+    if (key === 'goals') {
+      if (!session?.access_token) throw new Error('Sign in before deleting financial records.')
+      await requestApi(`/api/goals/${encodeURIComponent(id)}`, session, { method: 'DELETE' })
+      setData(previous => ({ ...previous, goals: previous.goals.filter(record => String(record.id) !== String(id)) }))
+      return
+    }
+    if (key === 'budgets') {
+      if (!session?.access_token) throw new Error('Sign in before deleting financial records.')
+      await requestApi(`/api/budgets/${encodeURIComponent(id)}`, session, { method: 'DELETE' })
+      setData(previous => ({ ...previous, budgets: previous.budgets.filter(record => String(record.id) !== String(id)) }))
+      return
+    }
+    if (key === 'notifications') {
+      if (session?.access_token) {
+        await requestApi(`/api/notifications/${encodeURIComponent(id)}`, session, { method: 'DELETE' })
+      }
+      setData(previous => ({ ...previous, notifications: previous.notifications.filter(record => String(record.id) !== String(id)) }))
+      return
+    }
     if (key === 'transactions' || key === 'investments') {
       if (!session?.access_token) throw new Error('Sign in before deleting financial records.')
       const record = data[key].find(item => String(item.id) === String(id))
@@ -281,11 +428,46 @@ export function FinanceProvider({ children }) {
     setData(previous => ({ ...previous, [key]: previous[key].filter(record => String(record.id) !== String(id)) }))
   }
 
+  const markNotificationRead = async id => {
+    if (session?.access_token) {
+      await requestApi(`/api/notifications/${encodeURIComponent(id)}/read`, session, { method: 'PUT' })
+    }
+    setData(previous => ({
+      ...previous,
+      notifications: previous.notifications.map(record => String(record.id) === String(id) ? { ...record, read: true } : record)
+    }))
+  }
+
+  const markAllNotificationsRead = async () => {
+    if (session?.access_token) {
+      await requestApi('/api/notifications/read-all', session, { method: 'PUT' })
+    }
+    setData(previous => ({
+      ...previous,
+      notifications: previous.notifications.map(record => ({ ...record, read: true }))
+    }))
+  }
+
+  const contribute = async (id, direction, amount) => {
+    if (!session?.access_token) throw new Error('Sign in before saving financial records.')
+    const result = await requestApi(`/api/goals/${encodeURIComponent(id)}/contributions`, session, {
+      method: 'POST',
+      body: { direction, amount: Number(amount) }
+    })
+    const saved = mapGoal(result.goal)
+    setData(previous => ({ ...previous, goals: previous.goals.map(record => String(record.id) === String(saved.id) ? saved : record) }))
+    return saved
+  }
+
   const reset = async () => {
     if (session?.access_token) {
       await Promise.all([
         ...data.transactions.map(item => requestApi(`${transactionEndpoint(item)}/${encodeURIComponent(item.id)}`, session, { method: 'DELETE' })),
-        ...data.investments.map(item => requestApi(`/api/portfolio/${encodeURIComponent(item.id)}`, session, { method: 'DELETE' }))
+        ...data.investments.map(item => requestApi(`/api/portfolio/${encodeURIComponent(item.id)}`, session, { method: 'DELETE' })),
+        ...data.goals.map(item => requestApi(`/api/goals/${encodeURIComponent(item.id)}`, session, { method: 'DELETE' })),
+        ...data.budgets.map(item => requestApi(`/api/budgets/${encodeURIComponent(item.id)}`, session, { method: 'DELETE' })),
+        // Notifications are cleaned up on a best-effort basis; a failure here should not block the reset.
+        ...data.notifications.map(item => requestApi(`/api/notifications/${encodeURIComponent(item.id)}`, session, { method: 'DELETE' }).catch(() => null))
       ])
     }
     const profile = { name: session?.name || 'User', email: session?.email || '' }
@@ -294,8 +476,10 @@ export function FinanceProvider({ children }) {
   }
 
   const value = useMemo(() => ({
-    data, update, add, replace, remove, reset, refresh, syncStatus, syncError
-  }), [data, session, refresh, syncStatus, syncError])
+    data, update, add, replace, remove, contribute, reset, refresh,
+    refreshNotifications, markNotificationRead, markAllNotificationsRead,
+    syncStatus, syncError
+  }), [data, session, refresh, refreshNotifications, syncStatus, syncError])
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>
 }
 

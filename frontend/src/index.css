@@ -51,7 +51,7 @@ main,main>div,section,article,header,aside { min-width:0; }
 main { overflow-wrap:anywhere; }
 table { border-collapse:collapse; }
 img,svg { max-width:100%; }
-.auth-shell { position:relative; isolation:isolate; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+.auth-shell { position:relative; isolation:isolate; overflow-x:hidden; overflow-y:auto; display:flex; align-items:flex-start; justify-content:center; }
 .auth-card { box-shadow:0 20px 60px rgba(15,60,43,.10); }
 .theme-toggle { display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--border); background:var(--surface); color:var(--text-secondary); }
 
@@ -114,9 +114,7 @@ img,svg { max-width:100%; }
   background:linear-gradient(180deg, rgba(18,31,24,.12), rgba(18,31,24,.18));
   pointer-events:none;
 }
-.auth-content { position:relative; z-index:1; width:min(100%,420px); }
-.auth-brand { color:#FFFDF7; text-shadow:0 1px 12px rgba(22,39,25,.45); }
-.auth-brand > span:first-child { background:#354F35; color:#FFFDF7; text-shadow:none; }
+.auth-content { position:relative; z-index:1; width:min(100%,420px); margin-block:auto; }
 .auth-shell .auth-card {
   position:relative;
   border:1px solid rgba(217,226,208,.9);
@@ -125,6 +123,20 @@ img,svg { max-width:100%; }
   color:#354F35;
   box-shadow:0 24px 70px rgba(28,45,28,.2);
 }
+.auth-shell .auth-login-card { padding:24px; }
+.auth-shell .auth-card-brand {
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  margin-bottom:14px;
+}
+.auth-shell .auth-brand-mark { display:block; width:auto; height:50px; object-fit:contain; }
+.auth-shell .auth-brand-wordmark { display:block; width:auto; max-width:75%; height:23px; object-fit:contain; }
+.auth-shell .auth-login-heading { font-size:24px; line-height:1.25; }
+.auth-shell .auth-login-description { margin-top:6px; color:#77796D; }
+.auth-shell .auth-login-form { margin-top:20px; }
+.auth-shell .auth-login-footer { margin-top:16px; }
 :root.dark .auth-shell .auth-card {
   border-color:#D9E2D0;
   background:#FFFDF7;
@@ -158,14 +170,8 @@ img,svg { max-width:100%; }
   background:rgba(255,255,255,.52);
   color:#59664F;
 }
-.auth-shell .auth-signup-password-toggle {
-  width:auto;
-  height:auto;
-  border:0;
-  border-radius:0;
-  background:transparent;
-}
 .auth-shell .auth-password-toggle:hover { color:#354F35; }
+:root.dark .app-shell aside .sidebar-wordmark { filter:brightness(2); }
 .auth-shell .auth-link { color:#557C55; }
 .auth-shell .auth-link:hover { color:#354F35; }
 .auth-shell .auth-remember { color:#59664F; }

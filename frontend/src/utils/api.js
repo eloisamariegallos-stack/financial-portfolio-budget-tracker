@@ -13,7 +13,7 @@ export async function postApi(endpoint, payload) {
   } catch (error) {
     if (error instanceof TypeError) {
       throw new Error(
-        `Cannot reach the FinanceTracker backend at ${API_BASE_URL}. Start the backend and verify VITE_API_BASE_URL.`
+        `Cannot reach the PennyWise backend at ${API_BASE_URL}. Start the backend and verify VITE_API_BASE_URL.`
       )
     }
     throw error
