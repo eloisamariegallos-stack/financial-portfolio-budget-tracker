@@ -1,13 +1,13 @@
-# FinanceTracker
+# PennyWise
 
-React + Tailwind CSS frontend for the FinanceTracker Express/Supabase backend.
+React + Tailwind CSS frontend for the PennyWise Express/Supabase backend.
 
 ## Run locally
 
 1. Install Node.js (LTS).
-2. Copy `../backend/.env.example` to `../backend/.env` and configure the Supabase URL and publishable key from your Supabase project. Never put a Supabase service-role key in the frontend.
+2. Copy `../backend/.env.example` to `../backend/.env` and configure the Supabase URL and publishable key from your Supabase project, plus `COHERE_API_KEY` from Cohere for the AI assistant. Never put a Supabase service-role key or Cohere API key in the frontend.
 3. Copy `.env.example` to `.env` if the backend uses a different address than `http://localhost:5000`; set `VITE_API_BASE_URL` to the backend origin (without an `/api` suffix).
-4. Start the backend from `../backend` with `npm start`.
+4. Start (or restart after changing `.env`) the backend from `../backend` with `npm start`.
 5. Run `npm install` and `npm run dev` from this folder.
 6. Create an account and sign in. Then add income or expense transactions and portfolio investments. These are fetched from the authenticated backend when the app loads and are saved in Supabase.
 
@@ -17,4 +17,6 @@ Finance API calls use the access token returned by the backend login flow. API f
 
 The backend schema stores income/expense source or category, amount, description, and date. Portfolio records store asset name/type, quantity, and per-unit purchase price. Extra frontend-only fields (such as payment method, account association, notes, ticker symbol, and manually entered current portfolio value) are cached in this browser and survive a page refresh, but are not synced across devices.
 
-The assistant uses local calculations, and investment prices are not live market prices.
+Investment prices are not live market prices.
+
+The AI Finance Assistant sends the signed-in user's chat and a brief summary of the current month's income, expenses, budgets, and goals to Cohere. The Cohere key stays in the backend `.env` file and is never sent to the browser.

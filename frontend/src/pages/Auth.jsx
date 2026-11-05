@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Activity, Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 import { seedData } from '../data/seed'
 import { postApi } from '../utils/api'
 
@@ -62,23 +62,35 @@ function startSession(user, authSession, preferences = {}) {
   window.dispatchEvent(new Event('fpt-session-change'))
 }
 
-function AuthShell({ title, subtitle, children }) {
+function AuthShell({ title, subtitle, children, variant = 'default' }) {
+  const isLogin = variant === 'login'
+
   return (
     <div className="auth-shell flex min-h-screen items-center justify-center p-4">
       <div className="auth-content mx-auto w-full max-w-md">
-        <div className="auth-brand mb-6 flex items-center justify-center gap-3">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl">
-            <Activity size={25} />
-          </span>
-          <span className="font-display text-xl font-extrabold leading-tight">FinanceTracker</span>
-        </div>
+        <section className={`card auth-card p-6 sm:p-9 ${isLogin ? 'auth-login-card' : ''}`}>
+          <div
+            className="auth-card-brand mb-3 flex items-center justify-center"
+            role="img"
+            aria-label="PennyWise"
+          >
+            <img
+              src="/pennywise-mark.png"
+              alt=""
+              className="auth-brand-mark"
+            />
+            <img
+              src="/pennywise-wordmark.png"
+              alt=""
+              className="auth-brand-wordmark"
+            />
+          </div>
 
-        <section className="card auth-card p-6 sm:p-9">
-          <h1 className="auth-heading text-center font-display text-2xl font-extrabold">
+          <h1 className={`auth-heading text-center font-display text-2xl font-extrabold ${isLogin ? 'auth-login-heading' : ''}`}>
             {title}
           </h1>
 
-          <p className="auth-description mt-2 text-center text-sm">
+          <p className={`auth-description mt-2 text-center text-sm ${isLogin ? 'auth-login-description' : ''}`}>
             {subtitle}
           </p>
 
@@ -158,10 +170,11 @@ export function Login() {
 
   return (
     <AuthShell
-      title="Welcome back to FinanceTracker"
+      title="Welcome back to PennyWise"
       subtitle="Manage your finances in one place"
+      variant="login"
     >
-      <form className="mt-7 space-y-4" onSubmit={submit}>
+      <form className="mt-7 space-y-4 auth-login-form" onSubmit={submit}>
         <label className="auth-label block text-sm font-medium">
           Email address
           <span className="relative mt-1.5 block">
@@ -181,7 +194,7 @@ export function Login() {
           <span className="relative mt-1.5 block">
             <input
               autoComplete="current-password"
-              className="field auth-input pr-10"
+              className="field auth-input pr-12"
               type={show ? 'text' : 'password'}
               value={password}
               onChange={e => setPassword(e.target.value)}
@@ -190,11 +203,12 @@ export function Login() {
 
             <button
               type="button"
-              className="auth-password-toggle absolute right-3 top-1/2 -translate-y-1/2"
-              onClick={() => setShow(!show)}
-              aria-label="Toggle password visibility"
+              className="auth-password-toggle absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-emerald-700"
+              onClick={() => setShow(value => !value)}
+              aria-label={show ? 'Hide password' : 'Show password'}
+              aria-pressed={show}
             >
-              {show ? <EyeOff size={16} /> : <Eye size={16} />}
+              {show ? <Eye size={16} aria-hidden="true" /> : <EyeOff size={16} aria-hidden="true" />}
             </button>
           </span>
         </label>
@@ -232,8 +246,8 @@ export function Login() {
         </button>
       </form>
 
-      <p className="auth-footer mt-5 text-center text-sm">
-        New to FinanceTracker?{' '}
+      <p className="auth-footer mt-5 text-center text-sm auth-login-footer">
+        New to PennyWise?{' '}
         <Link to="/signup" className="auth-link font-bold">
           Create an account
         </Link>
@@ -374,7 +388,7 @@ try {
           <span className="relative mt-1.5 block">
             <input
               autoComplete="new-password"
-              className="field auth-input pr-10"
+              className="field auth-input pr-12"
               type={show ? 'text' : 'password'}
               value={password}
               onChange={e => setPassword(e.target.value)}
@@ -384,11 +398,12 @@ try {
 
             <button
               type="button"
-              className="auth-password-toggle auth-signup-password-toggle absolute right-3 top-1/2 -translate-y-1/2"
-              onClick={() => setShow(!show)}
-              aria-label="Toggle password visibility"
+              className="auth-password-toggle absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-emerald-700"
+              onClick={() => setShow(value => !value)}
+              aria-label={show ? 'Hide password' : 'Show password'}
+              aria-pressed={show}
             >
-              {show ? <EyeOff size={16} /> : <Eye size={16} />}
+              {show ? <Eye size={16} aria-hidden="true" /> : <EyeOff size={16} aria-hidden="true" />}
             </button>
           </span>
 
@@ -402,7 +417,7 @@ try {
           <span className="relative mt-1.5 block">
             <input
               autoComplete="new-password"
-              className="field auth-input pr-10"
+              className="field auth-input pr-12"
               type={showConfirm ? 'text' : 'password'}
               value={confirm}
               onChange={e => setConfirm(e.target.value)}
@@ -410,11 +425,12 @@ try {
             />
             <button
               type="button"
-              className="auth-password-toggle auth-signup-password-toggle absolute right-3 top-1/2 -translate-y-1/2"
-              onClick={() => setShowConfirm(!showConfirm)}
-              aria-label="Toggle confirm password visibility"
+              className="auth-password-toggle absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-emerald-700"
+              onClick={() => setShowConfirm(value => !value)}
+              aria-label={showConfirm ? 'Hide confirm password' : 'Show confirm password'}
+              aria-pressed={showConfirm}
             >
-              {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+              {showConfirm ? <Eye size={16} aria-hidden="true" /> : <EyeOff size={16} aria-hidden="true" />}
             </button>
           </span>
         </label>
